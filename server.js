@@ -239,6 +239,55 @@ async function searchZoom(query) {
 }
 
 // ========================================
+// Relevancia - filtra produtos que nao combinam com a busca
+// ========================================
+function relevanceScore(query, productName) {
+    const queryTokens = query.toLowerCase().split(/\s+/).filter(t => t.length > 1);
+    const nameTokens = productName.toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length > 1);
+    const nameLower = productName.toLowerCase();
+    const queryLower = query.toLowerCase();
+
+    // Match exato da query inteira = maximo
+    if (nameLower.includes(queryLower)) return 100;
+
+    let score = 0;
+    let requiredTokens = 0;
+
+    for (const qt of queryTokens) {
+        const isNumeric = /^\d+$/.test(qt);
+        if (isNumeric) requiredTokens++;
+
+        const exactMatch = nameTokens.some(nt => nt === qt);
+        const partialMatch = !exactMatch && nameTokens.some(nt => nt.includes(qt) || qt.includes(nt));
+
+        if (exactMatch) {
+            score += isNumeric ? 30 : 10;
+        } else if (partialMatch) {
+            score += isNumeric ? 5 : 3;
+        }
+    }
+
+    // Se tem tokens numericos na query, pelo menos 1 deve bater exato
+    if (requiredTokens > 0) {
+        const numericTokens = queryTokens.filter(t => /^\d+$/.test(t));
+        const hasExactNumeric = numericTokens.some(qt =>
+            nameTokens.some(nt => nt === qt)
+        );
+        if (!hasExactNumeric && requiredTokens > 0) return 0;
+    }
+
+    return Math.min(score, 99);
+}
+
+function filterByRelevance(products, query) {
+    return products.filter(p => {
+        const score = relevanceScore(query, p.name);
+        p._relevance = score;
+        return score >= 15;
+    });
+}
+
+// ========================================
 // Busca Agregada - Sequencial com delay
 // ========================================
 async function searchAllStores(query) {
@@ -285,12 +334,17 @@ async function searchAllStores(query) {
         return true;
     });
 
+    // Filtrar por relevancia com a query
+    const relevant = filterByRelevance(unique, query);
+    relevant.sort((a, b) => (b._relevance || 0) - (a._relevance || 0) || a.price - b.price);
+    relevant.forEach(p => delete p._relevance);
+
     const elapsed = Date.now() - start;
-    console.log(`Total: ${unique.length} produtos unicos em ${elapsed}ms\n`);
+    console.log(`Total: ${relevant.length} produtos relevantes em ${elapsed}ms\n`);
 
     return {
         query,
-        totalResults: unique.length,
+        totalResults: relevant.length,
         storeCounts: {
             'Amazon': amazon.length,
             'Mercado Livre': ml.length,
@@ -298,11 +352,11 @@ async function searchAllStores(query) {
             'Zoom': zoom.length
         },
         storeLinks,
-        products: unique,
-        minPrice: unique.length > 0 ? unique[0].price : null,
-        maxPrice: unique.length > 0 ? unique[unique.length - 1].price : null,
-        avgPrice: unique.length > 0
-            ? Math.round(unique.reduce((s, p) => s + p.price, 0) / unique.length * 100) / 100
+        products: relevant,
+        minPrice: relevant.length > 0 ? relevant[0].price : null,
+        maxPrice: relevant.length > 0 ? relevant[relevant.length - 1].price : null,
+        avgPrice: relevant.length > 0
+            ? Math.round(relevant.reduce((s, p) => s + p.price, 0) / relevant.length * 100) / 100
             : null,
         searchTime: elapsed
     };
