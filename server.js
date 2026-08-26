@@ -330,7 +330,8 @@ async function searchAllStores(query) {
 
     const q = encodeURIComponent(query);
     const storeLinks = [
-        { name: 'Magazine Luiza', url: `https://www.magazineluiza.com.br/busca/${q}/`, color: '#0086ff', initial: 'ML' },
+        { name: 'Mercado Livre', url: `https://lista.mercadolivre.com.br/${q}`, color: '#ffe600', initial: 'ML' },
+        { name: 'Magazine Luiza', url: `https://www.magazineluiza.com.br/busca/${q}/`, color: '#0086ff', initial: 'MZ' },
         { name: 'Americanas', url: `https://www.americanas.com.br/busca/${q}`, color: '#e41e2b', initial: 'AM' },
         { name: 'Casas Bahia', url: `https://www.casasbahia.com.br/busca/${q}`, color: '#0046a0', initial: 'CB' },
         { name: 'AliExpress', url: `https://www.aliexpress.com/w/wholesale-${q}.html`, color: '#e43225', initial: 'AE' },
