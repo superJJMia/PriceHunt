@@ -162,7 +162,10 @@ async function searchMercadoLivre(query) {
 // ========================================
 async function searchBuscape(query) {
     try {
-        const { data } = await fetchWithRetry(`https://www.buscape.com.br/${encodeURIComponent(query)}`, {
+        const url = query.includes(' ')
+            ? `https://www.buscape.com.br/search?q=${encodeURIComponent(query)}`
+            : `https://www.buscape.com.br/${encodeURIComponent(query)}`;
+        const { data } = await fetchWithRetry(url, {
             headers: headers(), timeout: 15000
         });
         if (data.includes('captcha') || data.includes('bm-verify')) return [];
