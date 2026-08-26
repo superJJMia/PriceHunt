@@ -311,23 +311,21 @@ function relevanceScore(query, productName) {
     const nameLower = productName.toLowerCase();
     const queryLower = query.toLowerCase();
 
-    // Palavras que indicam acessorio/capacidade - penalizam fortemente
+    // Palavras que indicam acessorio
     const accessoryWords = [
         'capinha', 'capa', 'película', 'pelicula', 'film', 'filme', 'protetor',
-        'case', 'estojo', 'bolsa', 'bolsa', 'pochete', 'mochila',
+        'case', 'estojo', 'bolsa', 'pochete', 'mochila',
         'carregador', 'cabo', 'adaptador', 'hub', 'dock',
         'fone', 'fones', 'earbuds', 'headphone', 'headset', 'ouvido',
         'suporte', 'tripé', 'tripe', 'base', 'holder',
         'vidro', 'temperado', 'anti-impacto',
         'soquete', 'conversor', 'repetidor', 'extensor',
-        'película', 'lente', 'film', 'hydrogel',
-        'preta', 'branca', 'azul', 'vermelha', 'rosa', 'verde', 'cinza', 'dourada', 'prateada',
+        'lente', 'hydrogel',
         'transparente', 'silicone', 'plástico', 'metalico',
-        'para', 'compatível', 'compativel', 'aprofundamento',
+        'para', 'compatível', 'compativel',
         'acessório', 'acessorio', 'kit', 'conjunto'
     ];
 
-    // Detectar se o produto e um acessorio (mais de 1 token de acessorio = provavelmente acessorio)
     const nameAccessoryTokens = nameTokens.filter(t => accessoryWords.some(aw => t.includes(aw) || aw.includes(t)));
     const isLikelyAccessory = nameAccessoryTokens.length >= 2 ||
         (nameAccessoryTokens.length >= 1 && nameTokens.length <= 6);
@@ -338,38 +336,82 @@ function relevanceScore(query, productName) {
         return isLikelyAccessory ? 10 : 90;
     }
 
+    // Extrair tokens de modelo (letras+numeros como s24, a17, rx5700)
+    // Excluir specs: gb, tb, mb, hz, dpi, g (5g/4g), mp, mah, etc.
+    const specSuffixes = /^(?:gb|tb|mb|hz|dpi|mp|mah|w|mm|kg|cm|pol|fps|bit)$/i;
+    const connectivitySpecs = /^[45]g$/i;
+    const modelRegex = /^[a-z]+\d+[a-z]*$/i;
+    const queryModels = queryTokens.filter(t => modelRegex.test(t) && !specSuffixes.test(t) && !connectivitySpecs.test(t));
+    const nameModels = nameTokens.filter(t => modelRegex.test(t) && !specSuffixes.test(t) && !connectivitySpecs.test(t));
+
+    // Se a query tem tokens de modelo, pelo menos 1 deve bater no produto
+    if (queryModels.length > 0) {
+        const hasModelMatch = queryModels.some(qm =>
+            nameModels.some(nm => nm === qm || nm.startsWith(qm) || qm.startsWith(nm))
+        );
+        // Modelos variantes (s24, s24+, s24 ultra, s24 fe) sao aceitos
+        // mas modelos diferentes (s24 vs a17) sao rejeitados
+        const hasExactModel = queryModels.some(qm =>
+            nameModels.some(nm => nm === qm)
+        );
+        const hasVariantModel = queryModels.some(qm => {
+            const base = qm.replace(/[+]?$/, '');
+            return nameModels.some(nm => nm.startsWith(base));
+        });
+
+        if (!hasVariantModel && !hasExactModel) return 0;
+    }
+
     let score = 0;
-    let requiredTokens = 0;
+    let matchedTokens = 0;
 
     for (const qt of queryTokens) {
         const isNumeric = /^\d+$/.test(qt);
-        if (isNumeric) requiredTokens++;
+        const isModel = modelRegex.test(qt);
 
         const exactMatch = nameTokens.some(nt => nt === qt);
         const partialMatch = !exactMatch && nameTokens.some(nt => nt.includes(qt) || qt.includes(nt));
 
         if (exactMatch) {
-            score += isNumeric ? 30 : 10;
+            score += isNumeric ? 30 : (isModel ? 25 : 10);
+            matchedTokens++;
         } else if (partialMatch) {
-            score += isNumeric ? 5 : 3;
+            score += isNumeric ? 5 : (isModel ? 8 : 3);
+            matchedTokens++;
         }
     }
 
-    // Se tem tokens numericos na query, pelo menos 1 deve bater exato
-    if (requiredTokens > 0) {
-        const numericTokens = queryTokens.filter(t => /^\d+$/.test(t));
-        const hasExactNumeric = numericTokens.some(qt =>
-            nameTokens.some(nt => nt === qt)
-        );
-        if (!hasExactNumeric) return 0;
+    // Todos os tokens da query devem aparecer no nome (ou quase todos)
+    const matchRatio = matchedTokens / queryTokens.length;
+    if (matchRatio < 0.6) return 0;
+
+    // Penalizar se tem tokens de modelo diferente no nome
+    // (ex: busca "s24" mas produto tem "a17" ou "s26")
+    if (queryModels.length > 0) {
+        const extraModels = nameModels.filter(nm => {
+            // Ignorar variantes do mesmo modelo (s24fe, s24+, s24ultra)
+            const qmBase = queryModels.some(qm => {
+                const base = qm.replace(/[+]?$/, '');
+                return nm.startsWith(base);
+            });
+            if (qmBase) return false;
+            // Verificar se e um modelo completamente diferente
+            return queryModels.every(qm => {
+                const qBase = qm.replace(/[+]?$/, '');
+                const nBase = nm.replace(/[+]?$/, '');
+                return qBase !== nBase && !qBase.startsWith(nBase) && !nBase.startsWith(qBase);
+            });
+        });
+        if (extraModels.length > 0) score = Math.floor(score * 0.5);
     }
 
-    // Penalizar acessorios fortemente
+    // Penalizar acessorios
     if (isLikelyAccessory) score = Math.floor(score * 0.3);
 
-    // Bonus: se o nome comeca com algum token da query
-    const firstQueryToken = queryTokens[0];
-    if (firstQueryToken && nameLower.startsWith(firstQueryToken)) score += 15;
+    // Bonus: query inteira no inicio
+    if (nameLower.startsWith(queryLower)) score += 20;
+    // Bonus: primeiro token da query no inicio do nome
+    else if (queryTokens[0] && nameLower.startsWith(queryTokens[0])) score += 10;
 
     return Math.min(score, 99);
 }
