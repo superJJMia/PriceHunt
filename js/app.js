@@ -5,6 +5,8 @@
 const STORES = {
     amazon: { name: "Amazon", color: "#ff9900", initial: "A" },
     mercadolivre: { name: "Mercado Livre", color: "#ffe600", initial: "ML" },
+    buscape: { name: "Buscape", color: "#e41e2b", initial: "BZ" },
+    zoom: { name: "Zoom", color: "#00b0f0", initial: "ZM" },
     magalu: { name: "Magazine Luiza", color: "#0086ff", initial: "ML" },
     americanas: { name: "Americanas", color: "#e41e2b", initial: "AM" },
     casasbahia: { name: "Casas Bahia", color: "#0046a0", initial: "CB" },

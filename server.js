@@ -81,16 +81,15 @@ async function searchMercadoLivre(query) {
         const { data } = await axios.get(`https://lista.mercadolivre.com.br/${encodeURIComponent(query)}`, {
             headers: headers(), timeout: 12000
         });
-        
+
         if (data.includes('suspicious-traffic')) return [];
-        
+
         const $ = cheerio.load(data);
         const results = [];
 
-        // ML usa poly-card ou ui-search-layout__item
         $('ol.ui-search-layout li.ui-search-layout__item, div.poly-card').each((i, el) => {
             const $el = $(el);
-            
+
             let name = $el.find('h2.poly-component__title, h3.poly-component__title, a.poly-component__title').text().trim();
             if (!name) name = $el.find('h3, h2').first().text().trim();
             if (!name) return;
@@ -131,24 +130,132 @@ async function searchMercadoLivre(query) {
 }
 
 // ========================================
+// Buscape - Scraping (usa OrqProductCard)
+// ========================================
+async function searchBuscape(query) {
+    try {
+        const { data } = await axios.get(`https://www.buscape.com.br/${encodeURIComponent(query)}`, {
+            headers: headers(), timeout: 15000
+        });
+
+        const $ = cheerio.load(data);
+        const results = [];
+
+        $('article[data-testid="product-card"]').each((i, el) => {
+            const $el = $(el);
+
+            const name = $el.find('[data-testid="product-card::name"]').text().trim();
+            if (!name) return;
+
+            let price = null;
+            const priceText = $el.find('[data-testid="product-card::price"] strong').text().trim();
+            if (priceText) {
+                const cleaned = priceText.replace('R$', '').replace(/\./g, '').replace(',', '.').trim();
+                price = parseFloat(cleaned);
+            }
+            if (!price) return;
+
+            const href = $el.find('[data-testid="product-card::card"]').attr('href') || '';
+            const url = href.startsWith('http') ? href : `https://www.buscape.com.br${href}`;
+
+            const img = $el.find('[data-testid="product-card::image"] img').attr('src') || '';
+            const ratingText = $el.find('[data-testid="product-card::rating"]').text().trim();
+            const rm = ratingText.match(/([\d.,]+)/);
+            const rating = rm ? parseFloat(rm[1].replace(',', '.')) : null;
+            const reviews = rm ? ratingText.match(/\((\d+)\)/) : null;
+
+            results.push({
+                name, price,
+                oldPrice: null, discount: 0,
+                store: 'buscape', storeName: 'Buscape',
+                url, image: img, rating,
+                freeShipping: false, condition: 'Novo'
+            });
+        });
+
+        return results.slice(0, 20);
+    } catch (e) {
+        console.error('[Buscape]', e.message);
+        return [];
+    }
+}
+
+// ========================================
+// Zoom - Scraping (usa OrqProductCard)
+// ========================================
+async function searchZoom(query) {
+    try {
+        const { data } = await axios.get(`https://www.zoom.com.br/search?q=${encodeURIComponent(query)}`, {
+            headers: headers(), timeout: 15000
+        });
+
+        const $ = cheerio.load(data);
+        const results = [];
+
+        $('article[data-testid="product-card"]').each((i, el) => {
+            const $el = $(el);
+
+            const name = $el.find('[data-testid="product-card::name"]').text().trim();
+            if (!name) return;
+
+            let price = null;
+            const priceText = $el.find('[data-testid="product-card::price"] strong').text().trim();
+            if (priceText) {
+                const cleaned = priceText.replace('R$', '').replace(/\./g, '').replace(',', '.').trim();
+                price = parseFloat(cleaned);
+            }
+            if (!price) return;
+
+            const href = $el.find('[data-testid="product-card::card"]').attr('href') || '';
+            const url = href.startsWith('http') ? href : `https://www.zoom.com.br${href}`;
+
+            const img = $el.find('[data-testid="product-card::image"] img').attr('src') || '';
+            const ratingText = $el.find('[data-testid="product-card::rating"]').text().trim();
+            const rm = ratingText.match(/([\d.,]+)/);
+            const rating = rm ? parseFloat(rm[1].replace(',', '.')) : null;
+
+            const merchant = $el.find('[data-area="price"]').prev().find('span').text().trim() || '';
+
+            results.push({
+                name, price,
+                oldPrice: null, discount: 0,
+                store: 'zoom', storeName: 'Zoom',
+                url, image: img, rating,
+                freeShipping: false, condition: 'Novo'
+            });
+        });
+
+        return results.slice(0, 20);
+    } catch (e) {
+        console.error('[Zoom]', e.message);
+        return [];
+    }
+}
+
+// ========================================
 // Busca Agregada
 // ========================================
 async function searchAllStores(query) {
     console.log(`\n=== Buscando: "${query}" ===`);
     const start = Date.now();
 
-    const [amazonResults, mlResults] = await Promise.allSettled([
+    const [amazonResults, mlResults, buscapeResults, zoomResults] = await Promise.allSettled([
         searchAmazon(query),
-        searchMercadoLivre(query)
+        searchMercadoLivre(query),
+        searchBuscape(query),
+        searchZoom(query)
     ]);
 
     const amazon = amazonResults.status === 'fulfilled' ? amazonResults.value : [];
     const ml = mlResults.status === 'fulfilled' ? mlResults.value : [];
+    const buscape = buscapeResults.status === 'fulfilled' ? buscapeResults.value : [];
+    const zoom = zoomResults.status === 'fulfilled' ? zoomResults.value : [];
 
     console.log(`  Amazon: ${amazon.length} itens`);
     console.log(`  Mercado Livre: ${ml.length} itens`);
+    console.log(`  Buscape: ${buscape.length} itens`);
+    console.log(`  Zoom: ${zoom.length} itens`);
 
-    // Links diretos para outras lojas
     const q = encodeURIComponent(query);
     const storeLinks = [
         { name: 'Magazine Luiza', url: `https://www.magazineluiza.com.br/busca/${q}/`, color: '#0086ff', initial: 'ML' },
@@ -158,10 +265,9 @@ async function searchAllStores(query) {
         { name: 'Shopee', url: `https://shopee.com.br/search?keyword=${q}`, color: '#ee4d2d', initial: 'SH' },
     ];
 
-    const allProducts = [...amazon, ...ml];
+    const allProducts = [...amazon, ...ml, ...buscape, ...zoom];
     allProducts.sort((a, b) => a.price - b.price);
 
-    // Dedup
     const seen = new Set();
     const unique = allProducts.filter(p => {
         const key = `${p.store}:${p.name.substring(0, 40).toLowerCase()}`;
@@ -176,7 +282,12 @@ async function searchAllStores(query) {
     return {
         query,
         totalResults: unique.length,
-        storeCounts: { 'Amazon': amazon.length, 'Mercado Livre': ml.length },
+        storeCounts: {
+            'Amazon': amazon.length,
+            'Mercado Livre': ml.length,
+            'Buscape': buscape.length,
+            'Zoom': zoom.length
+        },
         storeLinks,
         products: unique,
         minPrice: unique.length > 0 ? unique[0].price : null,
