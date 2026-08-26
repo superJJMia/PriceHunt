@@ -257,6 +257,52 @@ async function searchZoom(query) {
 }
 
 // ========================================
+// Americanas (VTEX API)
+// ========================================
+async function searchAmericanas(query) {
+    try {
+        const url = `https://www.americanas.com.br/api/catalog_system/pub/products/search/${encodeURIComponent(query)}?_from=0&_to=19`;
+        const { data } = await fetchWithRetry(url, {
+            headers: headers({ 'Accept': 'application/json' }),
+            timeout: 15000
+        });
+        if (!Array.isArray(data)) return [];
+        const results = [];
+
+        for (const p of data) {
+            const name = p.productName || '';
+            if (!name) continue;
+
+            const item = p.items?.[0];
+            const seller = item?.sellers?.[0];
+            const offer = seller?.commertialOffer;
+            const price = offer?.Price;
+            const listPrice = offer?.ListPrice;
+
+            if (!price || price === 0) continue;
+
+            const img = item?.images?.[0]?.imageUrl || '';
+            const link = p.link || '';
+
+            results.push({
+                name, price,
+                oldPrice: listPrice && listPrice > price ? listPrice : null,
+                discount: listPrice && listPrice > price ? Math.round((1 - price / listPrice) * 100) : 0,
+                store: 'americanas', storeName: 'Americanas',
+                url: link.startsWith('http') ? link : `https://www.americanas.com.br${link}`,
+                image: img, rating: null,
+                freeShipping: false, condition: 'Novo'
+            });
+        }
+
+        return results.slice(0, 20);
+    } catch (e) {
+        console.error('[Americanas]', e.message);
+        return [];
+    }
+}
+
+// ========================================
 // Relevancia - filtra produtos que nao combinam com a busca
 // ========================================
 function relevanceScore(query, productName) {
@@ -322,7 +368,7 @@ async function searchAllStores(query) {
 
     console.log(`  Amazon: ${amazon.length} | ML: ${ml.length}`);
 
-    // Buscape primeiro, delay, Zoom
+    // Buscape primeiro, delay, Zoom, delay, Americanas
     const buscape = await searchBuscape(query);
     console.log(`  Buscape: ${buscape.length}`);
 
@@ -330,6 +376,11 @@ async function searchAllStores(query) {
 
     const zoom = await searchZoom(query);
     console.log(`  Zoom: ${zoom.length}`);
+
+    await sleep(800);
+
+    const americanas = await searchAmericanas(query);
+    console.log(`  Americanas: ${americanas.length}`);
 
     const q = encodeURIComponent(query);
     const storeLinks = [
@@ -341,7 +392,7 @@ async function searchAllStores(query) {
         { name: 'Shopee', url: `https://shopee.com.br/search?keyword=${q}`, color: '#ee4d2d', initial: 'SH' },
     ];
 
-    const allProducts = [...amazon, ...ml, ...buscape, ...zoom];
+    const allProducts = [...amazon, ...ml, ...buscape, ...zoom, ...americanas];
     allProducts.sort((a, b) => a.price - b.price);
 
     // Cross-store dedup: keep the cheapest per product name
@@ -368,7 +419,8 @@ async function searchAllStores(query) {
             'Amazon': amazon.length,
             'Mercado Livre': ml.length,
             'Buscape': buscape.length,
-            'Zoom': zoom.length
+            'Zoom': zoom.length,
+            'Americanas': americanas.length
         },
         storeLinks,
         products: relevant,
