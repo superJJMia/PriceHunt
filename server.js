@@ -311,8 +311,32 @@ function relevanceScore(query, productName) {
     const nameLower = productName.toLowerCase();
     const queryLower = query.toLowerCase();
 
-    // Match exato da query inteira = maximo
-    if (nameLower.includes(queryLower)) return 100;
+    // Palavras que indicam acessorio/capacidade - penalizam fortemente
+    const accessoryWords = [
+        'capinha', 'capa', 'película', 'pelicula', 'film', 'filme', 'protetor',
+        'case', 'estojo', 'bolsa', 'bolsa', 'pochete', 'mochila',
+        'carregador', 'cabo', 'adaptador', 'hub', 'dock',
+        'fone', 'fones', 'earbuds', 'headphone', 'headset', 'ouvido',
+        'suporte', 'tripé', 'tripe', 'base', 'holder',
+        'vidro', 'temperado', 'anti-impacto',
+        'soquete', 'conversor', 'repetidor', 'extensor',
+        'película', 'lente', 'film', 'hydrogel',
+        'preta', 'branca', 'azul', 'vermelha', 'rosa', 'verde', 'cinza', 'dourada', 'prateada',
+        'transparente', 'silicone', 'plástico', 'metalico',
+        'para', 'compatível', 'compativel', 'aprofundamento',
+        'acessório', 'acessorio', 'kit', 'conjunto'
+    ];
+
+    // Detectar se o produto e um acessorio (mais de 1 token de acessorio = provavelmente acessorio)
+    const nameAccessoryTokens = nameTokens.filter(t => accessoryWords.some(aw => t.includes(aw) || aw.includes(t)));
+    const isLikelyAccessory = nameAccessoryTokens.length >= 2 ||
+        (nameAccessoryTokens.length >= 1 && nameTokens.length <= 6);
+
+    // Match exato da query inteira no inicio do nome = maximo
+    if (nameLower.startsWith(queryLower)) return 100;
+    if (nameLower.includes(queryLower)) {
+        return isLikelyAccessory ? 10 : 90;
+    }
 
     let score = 0;
     let requiredTokens = 0;
@@ -337,8 +361,15 @@ function relevanceScore(query, productName) {
         const hasExactNumeric = numericTokens.some(qt =>
             nameTokens.some(nt => nt === qt)
         );
-        if (!hasExactNumeric && requiredTokens > 0) return 0;
+        if (!hasExactNumeric) return 0;
     }
+
+    // Penalizar acessorios fortemente
+    if (isLikelyAccessory) score = Math.floor(score * 0.3);
+
+    // Bonus: se o nome comeca com algum token da query
+    const firstQueryToken = queryTokens[0];
+    if (firstQueryToken && nameLower.startsWith(firstQueryToken)) score += 15;
 
     return Math.min(score, 99);
 }
