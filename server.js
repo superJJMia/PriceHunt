@@ -2,12 +2,27 @@ const express = require('express');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const PORT = 3000;
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname)));
+
+// Serve static files inline (works on Vercel serverless)
+const cssContent = fs.readFileSync(path.join(__dirname, 'css', 'style.css'), 'utf8');
+const jsContent = fs.readFileSync(path.join(__dirname, 'js', 'app.js'), 'utf8');
+const htmlContent = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+
+app.get('/css/style.css', (req, res) => {
+    res.setHeader('Content-Type', 'text/css');
+    res.send(cssContent);
+});
+
+app.get('/js/app.js', (req, res) => {
+    res.setHeader('Content-Type', 'application/javascript');
+    res.send(jsContent);
+});
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 
@@ -380,7 +395,8 @@ app.get('/api/search', async (req, res) => {
 });
 
 app.get('/{*path}', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    res.setHeader('Content-Type', 'text/html');
+    res.send(htmlContent);
 });
 
 if (process.env.VERCEL) {
