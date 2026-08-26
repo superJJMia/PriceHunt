@@ -383,6 +383,10 @@ app.get('/{*path}', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-app.listen(PORT, () => {
-    console.log(`\n  PriceHunt rodando em http://localhost:${PORT}\n`);
-});
+if (process.env.VERCEL) {
+    module.exports = app;
+} else {
+    app.listen(PORT, () => {
+        console.log(`\n  PriceHunt rodando em http://localhost:${PORT}\n`);
+    });
+}
