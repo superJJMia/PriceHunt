@@ -13,6 +13,7 @@ app.use(express.json());
 const cssContent = fs.readFileSync(path.join(__dirname, 'css', 'style.css'), 'utf8');
 const jsContent = fs.readFileSync(path.join(__dirname, 'js', 'app.js'), 'utf8');
 const htmlContent = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+const faviconContent = fs.readFileSync(path.join(__dirname, 'favicon.svg'), 'utf8');
 
 app.get('/css/style.css', (req, res) => {
     res.setHeader('Content-Type', 'text/css');
@@ -22,6 +23,11 @@ app.get('/css/style.css', (req, res) => {
 app.get('/js/app.js', (req, res) => {
     res.setHeader('Content-Type', 'application/javascript');
     res.send(jsContent);
+});
+
+app.get('/favicon.svg', (req, res) => {
+    res.setHeader('Content-Type', 'image/svg+xml');
+    res.send(faviconContent);
 });
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
